@@ -1,22 +1,19 @@
-install.packages("tidyverse")
 install.packages("rvest")
-library(tidyverse)
 library(rvest)
+library(dplyr)
 
-###On main page
 url <- "https://info.harris.uchicago.edu/harris-by-the-numbers"
-response <- read_html(url)
+page <- read_html(url)
+data_nodes <- html_nodes(page, "")
+data_text <- html_text(data_nodes)
 
-link_url <- response %>%
-  html_elements("a") %>%
-  html_attr("href")
+print(data_text)
 
-link_text <- response %>%
-  html_elements("a") %>%
-  html_text()
+data <- read.csv("/Users/aaliyahrobertson/Desktop/data/Most-Recent-Cohorts-Field-of-Study.csv")
 
-link_table <- data.frame(Link_Text = link_text, Link_URL = link_url)
+Project <- data %>% filter(INSTNM == "University of Chicago", CREDDESC == "Master's Degree")
 
-print(head(link_table))
+Project_filtered <- Project %>%
+  select(where(~ !any(grepl("PrivacySuppressed", .x))))
 
 
