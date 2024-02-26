@@ -118,7 +118,10 @@ ggplot(prepared_data, aes(x = SATMT_MID, y = ADM_RATE, size = SATVR_MID, color =
   theme(legend.position = "bottom")
 
 
+ols_model <- lm(ADM_RATE ~ SATMT_MID + SATVR_MID + CONTROL, data = prepared_data)
 
+# View the summary of the model
+summary(ols_model)
 
 
 
