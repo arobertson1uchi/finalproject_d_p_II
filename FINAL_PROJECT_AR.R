@@ -1,185 +1,121 @@
-install.packages("tidyverse")
-install.packages("rvest")
-library(tidyverse)
-library(rvest)
-
-url <- "https://info.harris.uchicago.edu/harris-by-the-numbers"
-response <- read_html(url)
-
-link_url <- response %>%
-  html_elements("a") %>%
-  html_attr("href")
-
-link_text <- response %>%
-  html_elements("a") %>%
-  html_text()
-
-link_table <- data.frame(Link_Text = link_text, Link_URL = link_url)
-
-print(head(link_table))
-
+library(readr)
+library(shiny)
 library(ggplot2)
+library(ggplot2)
+library(shiny)
+library(ggplot2)
+library(shiny)
 library(dplyr)
+library(plotly)
 
-filtered_links <- link_table %>%
-  filter(nchar(Link_Text) > 0) %>%
-  filter(!grepl("Log in|Search|Directory", Link_Text))
+Cohorts_Field_of_Study <- read_csv("~/Desktop/data/Most-Recent-Cohorts-Field-of-Study.csv")
+Cohorts_Institution <- read_csv("~/Desktop/data/Most-Recent-Cohorts-Institution.csv")
 
-grouped_links <- filtered_links %>%
-  mutate(Category = case_when(
-    grepl("Admissions|Prospective Students|Financial Aid", Link_Text) ~ "Admissions",
-    grepl("Academics|Courses|Faculty Directory", Link_Text) ~ "Academics",
-    grepl("Student Life|Student Organizations|Career Development", Link_Text) ~ "Student Life",
-    grepl("News & Events|Events", Link_Text) ~ "Events",
-    TRUE ~ "Other"
-  ))
+filtered_fields_of_study <- Cohorts_Field_of_Study %>%
+  select(UNITID, INSTNM, CIPCODE, CIPDESC, CREDDESC) %>%
+  filter(grepl("Chicago", INSTNM)) %>%
+  filter(grepl("Master", CREDDESC, ignore.case = TRUE))
 
-category_freq <- grouped_links %>%
-  group_by(Category) %>%
-  summarise(Frequency = n())
+filtered_institutions <- Cohorts_Institution %>%
+  select(
+    UNITID, INSTNM, CITY, STABBR, SCH_DEG, CONTROL,
+    ADM_RATE, SATVR25, SATVR75, SATMT25, SATMT75, SATWR25,
+    SATWR75, SATVRMID, SATMTMID, SATWRMID, ACTCM25, ACTCM75,
+    ACTEN25, ACTEN75
+  ) %>%
+  filter(grepl("Chicago", CITY)) %>%
+  filter(grepl("3", SCH_DEG, ignore.case = TRUE))
 
-grouped_links$Category <- factor(grouped_links$Category, levels = category_freq$Category[order(category_freq$Frequency)])
+filtered_institutions <- filtered_institutions %>%
+  mutate(UNITID = as.character(UNITID))
 
-my_colors <- c("Admissions" = "#4E79A7", "Academics" = "#F28E2B", "Student Life" = "#E15759", "Events" = "#76B7B2", "Other" = "#59A14F")
+merged_data <- left_join(filtered_fields_of_study, filtered_institutions, by = "UNITID")
 
-ggplot(grouped_links, aes(x = Category, fill = Category)) +
-  geom_bar(width = 0.6) +
-  labs(title = "Simplified Link Categories", x = "Category", y = "Frequency") +
-  theme_minimal() +  # Use a minimal theme
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),  # Rotate x-axis labels
-        axis.title = element_text(face = "bold"),  # Bold axis titles
-        legend.position = "none") +  # Remove legend
-  scale_fill_manual(values = my_colors) +  # Use custom color palette
-  geom_text(aes(label = ..count..), stat = "count", vjust = -0.5)  # Add frequency labels
+View(merged_data)
 
-# Assuming httr is installed and loaded
-library(httr)
+#Interactive Plot Looking at Admission Rates by Institution 
 
-# Define the URL for the robots.txt file
-robots_url <- "https://grad.uchicago.edu/robots.txt"
+ui <- fluidPage(
+  titlePanel("Admission Rates of Institutions in Chicago"),
+  fluidRow(
+    column(width = 6,
+           selectInput("variable", "Select Variable", 
+                       choices = c("ADM_RATE" = "ADM_RATE", "SATVR25" = "SATVR25"),
+                       selected = "ADM_RATE")),
+    column(width = 6,
+           uiOutput("second_input"))
+  ),
+  fluidRow(
+    plotlyOutput("admission_plot")
+  )
+)
 
-# Fetch the content of the robots.txt file
-response <- GET(robots_url)
-
-# Check if the request was successful
-if (status_code(response) == 200) {
-  # Print the content of robots.txt
-  cat(content(response, "text", encoding = "UTF-8"))
-} else {
-  cat("Failed to retrieve robots.txt: HTTP status", status_code(response))
+server <- function(input, output) {
+  
+  observe({
+    if (sum(!is.na(merged_data$ADM_RATE)) == 0) {
+      shiny::showNotification("No data points to plot!", duration = 5, type = "warning")
+    }
+  })
+  
+  output$second_input <- renderUI({
+    selectInput("variable_range", "Select Range",
+                choices = unique(merged_data[[input$variable]]),
+                selected = unique(merged_data[[input$variable]])[1])
+  })
+  
+  filtered_data <- reactive({
+    merged_data %>%
+      filter(!is.na(ADM_RATE)) %>%
+      filter(ADM_RATE != "NULL")
+  })
+  
+  output$admission_plot <- renderPlotly({
+    plot_ly(data = merged_data, x = ~INSTNM.y, y = ~ADM_RATE, text = ~paste("Institution: ", INSTNM.x, "<br>Admission Rate: ", ADM_RATE)) %>%
+      add_markers(marker = list(color = "pink", size = 10)) %>%
+      layout(title = "Admission Rates of Institutions",
+             xaxis = list(title = "Institution"),
+             yaxis = list(title = "Admission Rate"))
+  })
 }
 
+shinyApp(ui = ui, server = server)
 
+#ggPlot examining admission rates vs. SAT scores by Institution Type (Public vs Private)
 
-library(httr)
-library(rvest)
-
-# The URL you want to scrape
-
-
-library(readr)
-MERGED2021_22_PP <- read_csv("data/MERGED2021_22_PP.csv")
-MERGED2021_22_PP <- read_csv("data/MERGED2021_22_PP.csv")
-
-uchicago_df <- MERGED2021_22_PP %>% 
-  filter(CITY == "Chicago") %>%
-  select(INSTNM, CITY, STABBR, ZIP, SCH_DEG, PREDDEG, HIGHDEG, ADM_RATE, ADM_RATE_ALL,
-         SATVR25, SATVR75, SATMT25, SATMT75, SATWR25, SATWR75,
-         SATVRMID, SATMTMID, SATWRMID,
-         ACTCM25, ACTCM75, ACTEN25, ACTEN75)
-
+prepared_data <- merged_data %>%
+  mutate(
+    SATMT25 = as.numeric(as.character(SATMT25)),
+    SATMT75 = as.numeric(as.character(SATMT75)),
+    SATVR25 = as.numeric(as.character(SATVR25)),
+    SATVR75 = as.numeric(as.character(SATVR75)),
+    ADM_RATE = as.numeric(as.character(ADM_RATE))
+  ) %>%
   
-numeric_columns <- c("SATVR25", "SATVR75", "SATMT25", "SATMT75", "SATWR25", "SATWR75",
-                     "SATVRMID", "SATMTMID", "SATWRMID", "ACTCM25", "ACTCM75", "ACTEN25", "ACTEN75")
-
-uchicago_df[numeric_columns] <- lapply(uchicago_df[numeric_columns], function(x) as.numeric(as.character(x)))
-
-uchicago_df$SATVR25[is.na(uchicago_df$SATVR25)] <- mean(uchicago_df$SATVR25, na.rm = TRUE)
-uchicago_df$SATVR25[is.na(uchicago_df$SATVR25)] <- median(uchicago_df$SATVR25, na.rm = TRUE)
-
-cleaned_df <- uchicago_df[!is.na(uchicago_df$SATVR25) & !is.na(uchicago_df$SATMT25), ]
-
+  mutate(
+    SATMT_MID = (SATMT25 + SATMT75) / 2,
+    SATVR_MID = (SATVR25 + SATVR75) / 2
+  ) %>%
   
-# Summary statistics for SAT Verbal (Reading) and Math scores
-summary(uchicago_df$SATVRMID)  # Middle 50% SAT Verbal scores
-summary(uchicago_df$SATMTMID)  # Middle 50% SAT Math scores
+  filter(!is.na(SATMT_MID) & !is.na(SATVR_MID) & !is.na(ADM_RATE))
+str(prepared_data)
 
-# Summary statistics for ACT Composite scores
-summary(uchicago_df$ACTCM25)  # 25th percentile ACT Composite scores
-summary(uchicago_df$ACTCM75)  # 75th percentile ACT Composite scores
+prepared_data$CONTROL <- factor(prepared_data$CONTROL, levels = c(1, 2), labels = c("Public", "Private"))
 
-library(ggplot2)
+str(prepared_data$CONTROL)
 
-# Combine SAT Verbal and Math scores for a composite view
-ggplot(cleaned_df, aes(x = INSTNM, y = SATMTMID)) +
-  geom_boxplot(aes(fill = INSTNM)) +
-  labs(title = "SAT Math Midpoint Scores by Institution", x = "Institution", y = "SAT Math Midpoint Score") +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-# Repeat for SATVRMID if desired
-
-# Using the mean of the 25th and 75th percentile scores as a proxy for midpoint
-uchicago_df$ACTCM_MID <- with(uchicago_df, (ACTCM25 + ACTCM75) / 2)
-
-ggplot(uchicago_df, aes(x = INSTNM, y = ACTCM_MID, fill = INSTNM)) +
-  geom_bar(stat = "identity") +
-  labs(title = "ACT Composite Score Midpoints by Institution", x = "Institution", y = "ACT Composite Score Midpoint") +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# Assuming master's degree or higher is what we're interested in; HIGHDEG = 3 might indicate master's as the highest degree
-  filter(HIGHDEG >= 3) %>%
-  # Select relevant columns including SAT and ACT score ranges
-  select(INSTNM, CITY, STABBR, ZIP, SCH_DEG, PREDDEG, HIGHDEG, ADM_RATE, ADM_RATE_ALL,
-         SATVR25, SATVR75, SATMT25, SATMT75, SATWR25, SATWR75,
-         SATVRMID, SATMTMID, SATWRMID,
-         ACTCM25, ACTCM75, ACTEN25, ACTEN75)
-
-# View the filtered DataFrame
-print(uchicago_df)
-
-
-# Filter dataset for schools in Chicago
-chicago_schools <- df %>%
-  filter(CITY == "Chicago") %>%
-  select(INSTNM, SATVR25, SATVR75, SATMT25, SATMT75, ACTCM25, ACTCM75)
-
-# Proceed with analysis and visualization
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+ggplot(prepared_data, aes(x = SATMT_MID, y = ADM_RATE, size = SATVR_MID, color = CONTROL)) +
+  geom_point(alpha = 0.7) + 
+  scale_size(name = "Mid-range SAT Verbal Score") + 
+  scale_color_manual(values = c("Public" = "green", "Private" = "pink")) + 
+  theme_minimal() +
+  labs(
+    x = "Mid-range SAT Math Score",
+    y = "Admission Rate",
+    title = "Admission Rates vs. SAT Scores by Institution Type",
+    color = "Institution Type"
+  ) +
+  theme(legend.position = "bottom")
 
 
 
